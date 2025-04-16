@@ -1,18 +1,26 @@
-/**
- * Welcome to Cloudflare Workers! This is your first worker.
- *
- * - Run `npm run dev` in your terminal to start a development server
- * - Open a browser tab at http://localhost:8787/ to see your worker in action
- * - Run `npm run deploy` to publish your worker
- *
- * Bind resources to your worker in `wrangler.jsonc`. After adding bindings, a type definition for the
- * `Env` object can be regenerated with `npm run cf-typegen`.
- *
- * Learn more at https://developers.cloudflare.com/workers/
- */
+import { Bot } from 'grammy';
+import { Hono } from 'hono';
 
-export default {
-	async fetch(request, env, ctx): Promise<Response> {
-		return new Response('Hello World!');
-	},
-} satisfies ExportedHandler<Env>;
+type Payload = {
+	description: string;
+	signature: string;
+};
+
+const app = new Hono<{ Bindings: Env }>();
+
+app.use(async (c, next) => {
+	const authHeader = c.req.header('authorization');
+	if (authHeader !== c.env.WEBHOOK_TOKEN) return c.status(400);
+	await next();
+});
+
+app.post('/', async (c) => {
+	const bot = new Bot(c.env.BOT_TOKEN);
+	const payload = await c.req.json<Payload[]>();
+
+	const message = payload.map((e) => `${e.description}\n\nhttps://solscan.io/tx/${e.signature}`).join('\n\n');
+	await bot.api.sendMessage(5278367192, message, { link_preview_options: { is_disabled: true } });
+	return c.status(200);
+});
+
+export default app;
